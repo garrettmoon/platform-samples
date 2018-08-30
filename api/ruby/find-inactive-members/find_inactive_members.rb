@@ -25,6 +25,7 @@ class InactiveMemberSearch
     @date = options[:date]
     @organization = options[:organization]
     @email = options[:email]
+    @private_only = options[:private]
     @unrecognized_authors = []
 
     organization_members
@@ -95,10 +96,17 @@ private
   def organization_repositories
     info "Gathering a list of repositories..."
     # get all repos in the organizaton and place into a hash
-    @repositories = @client.organization_repositories(@organization).collect do |repo|
+    @repositories = @client.organization_repositories(@organization).reject{|repo|
+      (@private_only and repo["private"] == false)
+    }.collect{|repo|
       repo["full_name"]
+    }
+    
+    if @private_only
+      info "#{@repositories.length} private repositories discovered\n"
+    else
+      info "#{@repositories.length} repositories discovered\n"
     end
-    info "#{@repositories.length} repositories discovered\n"
   end
 
   def add_unrecognized_author(author)
@@ -197,11 +205,25 @@ private
 
     # open a new csv for output
     CSV.open("inactive_users.csv", "wb") do |csv|
+      csv << ["Login, Email"]
       # iterate and print inactive members
       @members.each do |member|
         if member[:active] == false
           member_detail = "#{member[:login]},#{member[:email] unless member[:email].nil?}"
           info "#{member_detail} is inactive\n"
+          csv << [member_detail]
+        end
+      end
+    end
+    
+    # open a new csv for output
+    CSV.open("active_users.csv", "wb") do |csv|
+      csv << ["Login, Email"]
+      # iterate and print inactive members
+      @members.each do |member|
+        if member[:active] == true
+          member_detail = "#{member[:login]},#{member[:email] unless member[:email].nil?}"
+          info "#{member_detail} is active\n"
           csv << [member_detail]
         end
       end
@@ -240,6 +262,10 @@ OptionParser.new do |opts|
   opts.on('-v', '--verbose', "More output to STDERR") do |v|
     @debug = true
     options[:verbose] = v
+  end
+  
+  opts.on('-p', '--private', "Only scans private repos") do |p|
+    options[:private] = p
   end
 
   opts.on('-h', '--help', "Display this help") do |h|
